@@ -44,52 +44,61 @@ class DSTServerConfigTool:
         
     def create_widgets(self):
         """创建界面组件"""
-        # 主框架
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # 创建主框架容器（带滚动条）
+        self.create_scrollable_frame()
         
         # 标题
-        title_label = ttk.Label(main_frame, text="🎮 test123", 
+        title_label = ttk.Label(self.main_frame, text="🎮 test123", 
                                style='Title.TLabel')
         title_label.grid(row=0, column=0, columnspan=3, pady=(0, 5))
         
         # 当前用户显示
-        user_label = ttk.Label(main_frame, text=f"当前用户: {self.current_user}", 
+        user_label = ttk.Label(self.main_frame, text=f"当前用户: {self.current_user}", 
                               style='Info.TLabel')
         user_label.grid(row=1, column=0, columnspan=3, pady=(0, 5))
 
         # 添加说明文本 - 修复了字符串中的双引号问题
         instructions_text = (
+            "前期工作：\n"
+            "打开饥荒联机版游戏，进入主界面，点击左下角的\"账号按钮\"，在弹出的网页上方选择\"游戏\"选项，并点击\"饥荒联机版的游戏服务器\"按钮（或直接点击下方按钮）\n"
+            "在\"服务器\"界面，填写服务器名称（此集群名并非最终展示的服务器名）后点击\"添加新服务器\"，在上方出现的对应服务器中点击\"配置服务器\"\n\n"
+        )
+        self.instructions_label = ttk.Label(self.main_frame, text=instructions_text, style='Info.TLabel', justify=tk.LEFT)
+        self.instructions_label.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(10, 5))
+        
+        # 添加打开链接按钮（在前期工作说明文本下方）
+        link_button = ttk.Button(self.main_frame, text="🌐 打开服务器配置页面", 
+                               command=self.open_server_config_page)
+        link_button.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+        
+        # 配置文件选择
+        self.create_file_selection(self.main_frame, 4, "配置文件", "config_file", 
+                                  "选择配置文件压缩包...", "zip")
+        
+        # 添加游戏操作说明（在配置文件选择下方）
+        game_instructions_text = (
             "1. 进入游戏\n"
             "打开饥荒联机版游戏，进入主界面，点击创建游戏\n"
             "2. 按照自己的需求创建世界\n"
             "按照正常步骤创建世界，对应的\"世界\"、\"洞穴\"、\"模组\"设置自己调整好，到人物选择界面即可断开连线"
         )
-        instructions_label = ttk.Label(main_frame, text=instructions_text, style='Info.TLabel', justify=tk.LEFT, wraplength=0)
-        instructions_label.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(10, 10))
-
-        # 绑定配置事件以更新wraplength
-        main_frame.bind("<Configure>", lambda event: self.update_wraplength(instructions_label))
+        self.game_instructions_label = ttk.Label(self.main_frame, text=game_instructions_text, style='Info.TLabel', justify=tk.LEFT)
+        self.game_instructions_label.grid(row=7, column=0, columnspan=3, sticky=tk.W, pady=(10, 10))
         
-        # 配置文件选择
-        self.create_file_selection(main_frame, 3, "配置文件", "config_file", 
-                                  "选择配置文件压缩包...", "zip")
+        # 绑定配置事件以更新wraplength
+        self.main_frame.bind("<Configure>", self.update_all_wraplengths)
         
         # SteamCMD路径
-        self.create_path_input(main_frame, 6, "SteamCMD", "steamcmd_path", 
+        self.create_path_input(self.main_frame, 10, "SteamCMD", "steamcmd_path", 
                               "C:\\steamcmd", "SteamCMD 安装目录...，例如：C:\\steamcmd")
         
-        # Steam路径
-        self.create_path_input(main_frame, 9, "Steam（用于配置模组）", "steam_path", 
-                              "C:\\steam", "Steam 安装目录...，例如：C:\\steam")
-        
         # 世界文件夹选择
-        self.create_file_selection(main_frame, 12, "世界文件夹", "world_folder", 
+        self.create_file_selection(self.main_frame, 16, "世界文件夹", "world_folder", 
                                   "选择想要启动的世界文件夹...，例如", "folder")
         
         # 按钮框架
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=15, column=0, columnspan=3, pady=2, sticky=(tk.W, tk.E))
+        button_frame = ttk.Frame(self.main_frame)
+        button_frame.grid(row=19, column=0, columnspan=3, pady=5, sticky=(tk.W, tk.E))
         
         # 开始配置按钮
         self.start_button = ttk.Button(button_frame, text="🚀 开始配置", 
@@ -103,23 +112,81 @@ class DSTServerConfigTool:
         
         # 进度条
         self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Progressbar(main_frame, variable=self.progress_var, 
+        self.progress_bar = ttk.Progressbar(self.main_frame, variable=self.progress_var, 
                                            maximum=100, length=500)
-        self.progress_bar.grid(row=16, column=0, columnspan=3, pady=(2, 1), sticky=(tk.W, tk.E))
+        self.progress_bar.grid(row=20, column=0, columnspan=3, pady=(5, 2), sticky=(tk.W, tk.E))
         
         # 日志区域
-        log_label = ttk.Label(main_frame, text="配置日志:", style='Header.TLabel')
-        log_label.grid(row=17, column=0, columnspan=3, sticky=tk.W, pady=(1, 0))
+        log_label = ttk.Label(self.main_frame, text="配置日志:", style='Header.TLabel')
+        log_label.grid(row=21, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
         
-        self.log_text = scrolledtext.ScrolledText(main_frame, height=3, width=60, 
+        self.log_text = scrolledtext.ScrolledText(self.main_frame, height=3, width=60, 
                                                  font=('Consolas', 8), bg='#2c3e50', fg='#ecf0f1')
-        self.log_text.grid(row=18, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.log_text.grid(row=22, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # 配置网格权重
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(18, weight=1)
+        self.main_frame.columnconfigure(1, weight=1)
+        self.main_frame.rowconfigure(22, weight=1)
+        
+        # 初始化wraplength
+        self.root.after(100, self.update_all_wraplengths)
+        
+        # 配置滚动区域
+        self.configure_scroll_region()
+        
+    def create_scrollable_frame(self):
+        """创建可滚动的框架"""
+        # 创建主容器
+        container = ttk.Frame(self.root)
+        container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # 创建画布
+        self.canvas = tk.Canvas(container, bg='#ecf0f1')
+        self.canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # 创建垂直滚动条
+        v_scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=self.canvas.yview)
+        v_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        
+        # 配置画布
+        self.canvas.configure(yscrollcommand=v_scrollbar.set)
+        
+        # 创建主框架（放在画布上）
+        self.main_frame = ttk.Frame(self.canvas, padding="10")
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.main_frame, anchor=tk.NW)
+        
+        # 配置容器权重
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(0, weight=1)
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        
+        # 绑定事件以调整滚动区域和画布窗口大小
+        self.main_frame.bind("<Configure>", self.on_frame_configure)
+        self.canvas.bind("<Configure>", self.on_canvas_configure)
+        
+        # 绑定鼠标滚轮事件
+        self.canvas.bind("<MouseWheel>", self.on_mousewheel)
+        self.main_frame.bind("<MouseWheel>", self.on_mousewheel)
+        
+    def on_frame_configure(self, event=None):
+        """当框架大小改变时更新滚动区域"""
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        
+    def on_canvas_configure(self, event=None):
+        """当画布大小改变时调整内部窗口宽度"""
+        self.canvas.itemconfig(self.canvas_window, width=event.width)
+        
+    def on_mousewheel(self, event):
+        """处理鼠标滚轮事件"""
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        
+    def configure_scroll_region(self):
+        """配置滚动区域"""
+        self.root.update_idletasks()
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         
     def create_file_selection(self, parent, row, label_text, var_name, placeholder, file_type):
         """创建文件选择组件"""
@@ -509,9 +576,24 @@ class DSTServerConfigTool:
 
     def update_wraplength(self, label):
         """动态更新Label的wraplength以适配窗口大小"""
-        width = label.master.winfo_width() - 40  # 减去边距
+        width = self.root.winfo_width() - 80  # 减去边距和滚动条宽度
         if width > 0:
             label.config(wraplength=width)
+            
+    def update_all_wraplengths(self, event=None):
+        """更新所有需要自动换行的标签"""
+        self.update_wraplength(self.instructions_label)
+        self.update_wraplength(self.game_instructions_label)
+
+    def open_server_config_page(self):
+        """打开服务器配置页面"""
+        url = "https://steamcommunity.com/linkfilter/?u=https%3A%2F%2Faccounts.klei.com%2Faccount%2Fgame%2Fservers%3Fgame%3DDontStarveTogether"
+        try:
+            subprocess.Popen(f"start {url}", shell=True)
+            self.log_message(f"已打开浏览器访问: {url}", "INFO")
+        except FileNotFoundError:
+            messagebox.showerror("错误", "无法打开浏览器。请手动访问以下链接：\n" + url)
+            self.log_message(f"无法打开浏览器，请手动访问: {url}", "ERROR")
 
 def main():
     """主函数"""
