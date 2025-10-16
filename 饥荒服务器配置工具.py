@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-test123
+饥荒联机版本地服务器配置工具
 自动化配置饥荒联机版专用服务器
 """
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
+import json
 import os
 import shutil
 import zipfile
@@ -16,15 +17,21 @@ import time
 from pathlib import Path
 import getpass
 
+# 配置文件路径
+CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dst_server_config.json")
+
 class DSTServerConfigTool:
     def __init__(self, root):
         self.root = root
-        self.root.title("🎮 test123")
-        self.root.geometry("500x600")
+        self.root.title("🎮 饥荒联机版本地服务器配置工具")
+        self.root.geometry("1200x800")
         self.root.resizable(True, True)
         
         # 获取当前用户 - 必须在create_widgets之前
         self.current_user = getpass.getuser()
+        
+        # 加载保存的配置
+        self.saved_config = self.load_config()
         
         # 设置样式
         self.setup_styles()
@@ -47,32 +54,48 @@ class DSTServerConfigTool:
         # 创建主框架容器（带滚动条）
         self.create_scrollable_frame()
         
+        # 配置主框架为两列布局
+        self.main_frame.columnconfigure(0, weight=1)  # 左列
+        self.main_frame.columnconfigure(1, weight=1)  # 右列
+        
+        # 左侧框架 - 表单组件
+        left_frame = ttk.Frame(self.main_frame)
+        left_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        left_frame.columnconfigure(0, weight=1)
+        
+        # 右侧框架 - 日志区域
+        right_frame = ttk.Frame(self.main_frame)
+        right_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(10, 0))
+        right_frame.columnconfigure(0, weight=1)
+        right_frame.rowconfigure(1, weight=1)
+        
         # 标题
-        title_label = ttk.Label(self.main_frame, text="🎮 test123", 
+        title_label = ttk.Label(left_frame, text="🎮 饥荒联机版本地服务器配置工具", 
                                style='Title.TLabel')
-        title_label.grid(row=0, column=0, columnspan=3, pady=(0, 5))
+        title_label.grid(row=0, column=0, pady=(0, 5))
         
         # 当前用户显示
-        user_label = ttk.Label(self.main_frame, text=f"当前用户: {self.current_user}", 
+        user_label = ttk.Label(left_frame, text=f"当前用户: {self.current_user}", 
                               style='Info.TLabel')
-        user_label.grid(row=1, column=0, columnspan=3, pady=(0, 5))
-
-        # 添加说明文本 - 修复了字符串中的双引号问题
-        instructions_text = (
-            "前期工作：\n"
-            "打开饥荒联机版游戏，进入主界面，点击左下角的\"账号按钮\"，在弹出的网页上方选择\"游戏\"选项，并点击\"饥荒联机版的游戏服务器\"按钮（或直接点击下方按钮）\n"
-            "在\"服务器\"界面，填写服务器名称（此集群名并非最终展示的服务器名）后点击\"添加新服务器\"，在上方出现的对应服务器中点击\"配置服务器\"\n\n"
-        )
-        self.instructions_label = ttk.Label(self.main_frame, text=instructions_text, style='Info.TLabel', justify=tk.LEFT)
-        self.instructions_label.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(10, 5))
+        user_label.grid(row=1, column=0, pady=(0, 5))
         
-        # 添加打开链接按钮（在前期工作说明文本下方）
-        link_button = ttk.Button(self.main_frame, text="🌐 打开服务器配置页面", 
+        # 添加说明文本
+        instructions_text = (
+            "首先需要下载服务器配置文件：\n"
+            "点击下方按钮\n"
+            "在\"服务器\"界面，填写服务器名称（此集群名并非最终展示的服务器名）后点击\"添加新服务器\"，在上方出现的对应服务器中点击\"配置服务器\"\n"
+            "然后点\"下载配置\"按钮即可将配置文件下载下来\n\n"
+        )
+        self.instructions_label = ttk.Label(left_frame, text=instructions_text, style='Info.TLabel', justify=tk.LEFT)
+        self.instructions_label.grid(row=2, column=0, sticky=tk.W, pady=(10, 5))
+        
+        # 添加打开链接按钮（在首先需要下载服务器配置文件说明文本下方）
+        link_button = ttk.Button(left_frame, text="🌐 打开配置文件下载页面", 
                                command=self.open_server_config_page)
-        link_button.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+        link_button.grid(row=3, column=0, sticky=tk.W, pady=(0, 10))
         
         # 配置文件选择
-        self.create_file_selection(self.main_frame, 4, "配置文件", "config_file", 
+        self.create_file_selection(left_frame, 4, "配置文件位置", "config_file", 
                                   "选择配置文件压缩包...", "zip")
         
         # 添加游戏操作说明（在配置文件选择下方）
@@ -82,23 +105,27 @@ class DSTServerConfigTool:
             "2. 按照自己的需求创建世界\n"
             "按照正常步骤创建世界，对应的\"世界\"、\"洞穴\"、\"模组\"设置自己调整好，到人物选择界面即可断开连线"
         )
-        self.game_instructions_label = ttk.Label(self.main_frame, text=game_instructions_text, style='Info.TLabel', justify=tk.LEFT)
-        self.game_instructions_label.grid(row=7, column=0, columnspan=3, sticky=tk.W, pady=(10, 10))
+        self.game_instructions_label = ttk.Label(left_frame, text=game_instructions_text, style='Info.TLabel', justify=tk.LEFT)
+        self.game_instructions_label.grid(row=7, column=0, sticky=tk.W, pady=(10, 10))
         
         # 绑定配置事件以更新wraplength
         self.main_frame.bind("<Configure>", self.update_all_wraplengths)
         
         # SteamCMD路径
-        self.create_path_input(self.main_frame, 10, "SteamCMD", "steamcmd_path", 
+        self.create_path_input(left_frame, 10, "SteamCMD 安装目录", "steamcmd_path", 
                               "C:\\steamcmd", "SteamCMD 安装目录...，例如：C:\\steamcmd")
         
+        # Steam路径
+        self.create_path_input(left_frame, 13, "Steam 安装目录（用于配置模组）", "steam_path", 
+                              "C:\\steam", "Steam 安装目录...，例如：C:\\steam")
+        
         # 世界文件夹选择
-        self.create_file_selection(self.main_frame, 16, "世界文件夹", "world_folder", 
-                                  "选择想要启动的世界文件夹...，例如", "folder")
+        self.create_file_selection(left_frame, 19, "世界文件夹位置", "world_folder", 
+                                  "选择想要启动的世界文件夹...，例如C:\\Users\\XXX\\Documents\\Klei\\DoNotStarveTogether\\XXX\\Cluster_1", "folder")
         
         # 按钮框架
-        button_frame = ttk.Frame(self.main_frame)
-        button_frame.grid(row=19, column=0, columnspan=3, pady=5, sticky=(tk.W, tk.E))
+        button_frame = ttk.Frame(left_frame)
+        button_frame.grid(row=22, column=0, pady=5, sticky=(tk.W, tk.E))
         
         # 开始配置按钮
         self.start_button = ttk.Button(button_frame, text="🚀 开始配置", 
@@ -112,23 +139,22 @@ class DSTServerConfigTool:
         
         # 进度条
         self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Progressbar(self.main_frame, variable=self.progress_var, 
+        self.progress_bar = ttk.Progressbar(left_frame, variable=self.progress_var, 
                                            maximum=100, length=500)
-        self.progress_bar.grid(row=20, column=0, columnspan=3, pady=(5, 2), sticky=(tk.W, tk.E))
+        self.progress_bar.grid(row=23, column=0, pady=(5, 2), sticky=(tk.W, tk.E))
         
-        # 日志区域
-        log_label = ttk.Label(self.main_frame, text="配置日志:", style='Header.TLabel')
-        log_label.grid(row=21, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
+        # 日志区域 - 独占右框架
+        log_label = ttk.Label(right_frame, text="输出日志:", style='Header.TLabel')
+        log_label.grid(row=0, column=0, sticky=tk.W, pady=(2, 0))
         
-        self.log_text = scrolledtext.ScrolledText(self.main_frame, height=3, width=60, 
+        self.log_text = scrolledtext.ScrolledText(right_frame, height=20, width=80, 
                                                  font=('Consolas', 8), bg='#2c3e50', fg='#ecf0f1')
-        self.log_text.grid(row=22, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.log_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # 配置网格权重
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        self.main_frame.columnconfigure(1, weight=1)
-        self.main_frame.rowconfigure(22, weight=1)
+        self.main_frame.rowconfigure(0, weight=1)  # 使左右框架能垂直扩展
         
         # 初始化wraplength
         self.root.after(100, self.update_all_wraplengths)
@@ -207,6 +233,9 @@ class DSTServerConfigTool:
         
         # 输入框
         setattr(self, var_name, tk.StringVar())
+        # 设置默认值为保存的配置
+        if var_name in self.saved_config:
+            getattr(self, var_name).set(self.saved_config[var_name])
         entry = ttk.Entry(input_frame, textvariable=getattr(self, var_name), font=('Microsoft YaHei', 10))
         entry.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
         
@@ -228,7 +257,7 @@ class DSTServerConfigTool:
         
         # 如果是steam_path，添加单选框到标签右边
         if var_name == "steam_path":
-            self.steam_mod_var = tk.BooleanVar(value=True)  # 默认勾选
+            self.steam_mod_var = tk.BooleanVar(value=self.saved_config.get('steam_mod', True))  # 从配置加载
             check_button = tk.Checkbutton(label_frame, text="需要加载模组", variable=self.steam_mod_var,
                                    command=self.toggle_steam_path, compound='left',
                                    font=('Microsoft YaHei', 10), fg='#34495e', relief='flat')
@@ -246,6 +275,9 @@ class DSTServerConfigTool:
         
         # 输入框
         setattr(self, var_name, tk.StringVar())
+        # 设置默认值为保存的配置
+        if var_name in self.saved_config:
+            getattr(self, var_name).set(self.saved_config[var_name])
         entry = ttk.Entry(input_frame, textvariable=getattr(self, var_name), font=('Microsoft YaHei', 10))
         entry.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
         
@@ -268,6 +300,10 @@ class DSTServerConfigTool:
         else:
             self.steam_entry.config(state='disabled')
             self.steam_browse_button.config(state='disabled')
+        
+        # 只有在所有组件初始化完成后才保存配置
+        if hasattr(self, 'world_folder'):
+            self.save_config()
             
     def browse_file(self, var_name, file_type):
         """浏览文件或文件夹"""
@@ -297,6 +333,8 @@ class DSTServerConfigTool:
                     return
         
             var.set(path)
+            # 保存配置
+            self.save_config()
             
     def browse_folder(self, var_name):
         """浏览文件夹"""
@@ -315,6 +353,8 @@ class DSTServerConfigTool:
                 return
             
             var.set(path)
+            # 保存配置
+            self.save_config()
             
     def reset_form(self):
         """重置表单"""
@@ -327,35 +367,41 @@ class DSTServerConfigTool:
         self.start_button.config(state='normal')
         
     def log_message(self, message, level="INFO"):
-        """添加日志消息"""
-        timestamp = time.strftime("%H:%M:%S")
+        """添加日志消息（线程安全）"""
+        def _log():
+            timestamp = time.strftime("%H:%M:%S")
+            
+            # 根据级别设置颜色
+            color_map = {
+                "INFO": "#3498db",
+                "SUCCESS": "#2ecc71", 
+                "WARNING": "#f39c12",
+                "ERROR": "#e74c3c"
+            }
+            
+            color = color_map.get(level, "#3498db")
+            
+            # 插入带颜色的文本
+            self.log_text.insert(tk.END, f"[{timestamp}] ", "timestamp")
+            self.log_text.insert(tk.END, f"[{level}] ", level.lower())
+            self.log_text.insert(tk.END, f"{message}\n", "message")
+            
+            # 配置标签颜色
+            self.log_text.tag_config("timestamp", foreground="#95a5a6")
+            self.log_text.tag_config(level.lower(), foreground=color, font=('Consolas', 9, 'bold'))
+            self.log_text.tag_config("message", foreground="#ecf0f1")
+            
+            self.log_text.see(tk.END)
         
-        # 根据级别设置颜色
-        color_map = {
-            "INFO": "#3498db",
-            "SUCCESS": "#2ecc71", 
-            "WARNING": "#f39c12",
-            "ERROR": "#e74c3c"
-        }
-        
-        color = color_map.get(level, "#3498db")
-        
-        # 插入带颜色的文本
-        self.log_text.insert(tk.END, f"[{timestamp}] ", "timestamp")
-        self.log_text.insert(tk.END, f"[{level}] ", level.lower())
-        self.log_text.insert(tk.END, f"{message}\n", "message")
-        
-        # 配置标签颜色
-        self.log_text.tag_config("timestamp", foreground="#95a5a6")
-        self.log_text.tag_config(level.lower(), foreground=color, font=('Consolas', 9, 'bold'))
-        self.log_text.tag_config("message", foreground="#ecf0f1")
-        
-        self.log_text.see(tk.END)
+        self.root.after(0, _log)
         self.root.update_idletasks()
         
     def update_progress(self, value):
-        """更新进度条"""
-        self.progress_var.set(value)
+        """更新进度条（线程安全）"""
+        def _update():
+            self.progress_var.set(value)
+        
+        self.root.after(0, _update)
         self.root.update_idletasks()
         
     def validate_inputs(self):
@@ -439,10 +485,12 @@ class DSTServerConfigTool:
             self.log_message("服务器启动完成！", "SUCCESS")
             self.update_progress(100)
             
-            self.log_message("🎉 配置完成！您的饥荒联机版专用服务器已准备就绪！", "SUCCESS")
+            self.log_message("🎉 配置完成！您的饥荒联机版本地服务器正在启动！", "SUCCESS")
             
         except Exception as e:
             self.log_message(f"配置过程中出现错误: {str(e)}", "ERROR")
+            import traceback
+            self.log_message(f"详细错误信息: {traceback.format_exc()}", "ERROR")
         finally:
             # 重新启用开始按钮
             self.start_button.config(state='normal')
@@ -503,35 +551,64 @@ class DSTServerConfigTool:
         steamcmd_path = self.steamcmd_path.get()
         
         workshop_path = f"{steam_path}\\steamapps\\workshop\\content\\322330"
-        mods_path = f"{steamcmd_path}\\cmd\\steamapps\\common\\Don't Starve Together Dedicated Server\\mods"
+        mods_path = f"{steamcmd_path}\\steamapps\\common\\Don't Starve Together Dedicated Server\\mods"
+        
+        self.log_message(f"Workshop路径: {workshop_path}")
+        self.log_message(f"Mods目标路径: {mods_path}")
         
         if not os.path.exists(workshop_path):
-            raise FileNotFoundError(f"Steam Workshop路径不存在: {workshop_path}")
+            self.log_message(f"警告: Steam Workshop路径不存在: {workshop_path}", "WARNING")
+            return
             
+        # 初始化计数器
+        workshop_count = 0
+        local_count = 0
+        
         # 删除现有mods文件夹
         if os.path.exists(mods_path):
+            self.log_message("删除现有mods文件夹...")
             shutil.rmtree(mods_path)
         os.makedirs(mods_path)
+        self.log_message("创建新的mods文件夹")
         
         # 复制workshop内容并重命名
         if os.path.exists(workshop_path):
+            self.log_message("开始复制workshop模组...")
             for item in os.listdir(workshop_path):
                 src = os.path.join(workshop_path, item)
                 dst = os.path.join(mods_path, f"workshop-{item}")
                 
                 if os.path.isdir(src):
-                    shutil.copytree(src, dst)
+                    try:
+                        shutil.copytree(src, dst)
+                        workshop_count += 1
+                        self.log_message(f"复制workshop模组: {item}")
+                    except Exception as e:
+                        self.log_message(f"复制workshop模组 {item} 时出错: {str(e)}", "WARNING")
+            
+            self.log_message(f"共复制 {workshop_count} 个workshop模组")
                     
         # 复制本地mods
         local_mods_path = f"{steam_path}\\steamapps\\common\\Don't Starve Together\\mods"
         if os.path.exists(local_mods_path):
+            self.log_message("开始复制本地模组...")
             for item in os.listdir(local_mods_path):
                 src = os.path.join(local_mods_path, item)
                 dst = os.path.join(mods_path, item)
                 
                 if os.path.isdir(src):
-                    shutil.copytree(src, dst, dirs_exist_ok=True)
-                    
+                    try:
+                        shutil.copytree(src, dst, dirs_exist_ok=True)
+                        local_count += 1
+                        self.log_message(f"复制本地模组: {item}")
+                    except Exception as e:
+                        self.log_message(f"复制本地模组 {item} 时出错: {str(e)}", "WARNING")
+            
+            self.log_message(f"共复制 {local_count} 个本地模组")
+        
+        total_count = workshop_count + local_count
+        self.log_message(f"模组复制完成，总计 {total_count} 个模组", "SUCCESS")
+            
     def update_steamcmd(self):
         """更新SteamCMD"""
         steamcmd_path = self.steamcmd_path.get()
@@ -543,9 +620,47 @@ class DSTServerConfigTool:
         cmd = [steamcmd_exe, "+login", "anonymous", "+app_update", "343050", "validate", "+quit"]
         self.log_message(f"执行命令: {' '.join(cmd)}")
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if result.returncode != 0:
-            raise RuntimeError(f"SteamCMD更新失败: {result.stderr}")
+        try:
+            # 使用更安全的方式执行命令
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                timeout=600,  # 增加超时时间到10分钟
+                encoding='utf-8',
+                errors='ignore'  # 忽略编码错误
+            )
+            
+            # 输出命令执行结果到日志
+            if result.stdout:
+                # 限制输出长度，避免日志过长
+                output_lines = result.stdout.split('\n')
+                for line in output_lines[:50]:  # 只显示前50行
+                    if line.strip():
+                        self.log_message(f"输出: {line}")
+                if len(output_lines) > 50:
+                    self.log_message(f"... 还有 {len(output_lines) - 50} 行输出被省略", "INFO")
+                    
+            if result.stderr:
+                error_lines = result.stderr.split('\n')
+                for line in error_lines[:20]:  # 只显示前20行错误
+                    if line.strip():
+                        self.log_message(f"错误: {line}", "WARNING")
+                if len(error_lines) > 20:
+                    self.log_message(f"... 还有 {len(error_lines) - 20} 行错误被省略", "WARNING")
+            
+            # 检查返回码
+            if result.returncode != 0:
+                self.log_message(f"SteamCMD返回非零退出码: {result.returncode}", "WARNING")
+                # 不抛出异常，继续执行，因为有些警告不影响使用
+            else:
+                self.log_message("SteamCMD更新成功完成", "SUCCESS")
+                
+        except subprocess.TimeoutExpired:
+            self.log_message("SteamCMD更新超时，但可能仍在运行中", "WARNING")
+        except Exception as e:
+            self.log_message(f"执行SteamCMD时发生错误: {str(e)}", "ERROR")
+            # 不抛出异常，继续执行
             
     def start_servers(self):
         """启动服务器"""
@@ -555,45 +670,101 @@ class DSTServerConfigTool:
         if not os.path.exists(server_path):
             raise FileNotFoundError(f"服务器路径不存在: {server_path}")
             
+        # 检查可执行文件是否存在
+        server_exe = f"{server_path}\\dontstarve_dedicated_server_nullrenderer.exe"
+        if not os.path.exists(server_exe):
+            raise FileNotFoundError(f"服务器可执行文件不存在: {server_exe}")
+            
         # 启动Master服务器
         master_cmd = [
-            f"{server_path}\\dontstarve_dedicated_server_nullrenderer.exe",
+            server_exe,
             "-console", "-cluster", "MyDediServer", "-shard", "Master"
         ]
         
         # 启动Caves服务器
         caves_cmd = [
-            f"{server_path}\\dontstarve_dedicated_server_nullrenderer.exe",
+            server_exe,
             "-console", "-cluster", "MyDediServer", "-shard", "Caves"
         ]
         
         self.log_message(f"切换到目录: {server_path}")
         self.log_message("启动Master服务器...")
-        subprocess.Popen(master_cmd, cwd=server_path)
+        self.log_message(f"Master命令: {' '.join(master_cmd)}")
         
         self.log_message("启动Caves服务器...")
-        subprocess.Popen(caves_cmd, cwd=server_path)
+        self.log_message(f"Caves命令: {' '.join(caves_cmd)}")
+        
+        try:
+            # 启动服务器进程
+            master_process = subprocess.Popen(master_cmd, cwd=server_path)
+            caves_process = subprocess.Popen(caves_cmd, cwd=server_path)
+            
+            self.log_message(f"Master服务器进程ID: {master_process.pid}")
+            self.log_message(f"Caves服务器进程ID: {caves_process.pid}")
+            self.log_message("服务器启动命令已执行", "SUCCESS")
+        except Exception as e:
+            self.log_message(f"启动服务器时出错: {str(e)}", "ERROR")
+            # 不抛出异常，继续执行
 
-    def update_wraplength(self, label):
-        """动态更新Label的wraplength以适配窗口大小"""
-        width = self.root.winfo_width() - 80  # 减去边距和滚动条宽度
+    def update_wraplength(self, label, event=None):
+        """动态更新Label的wraplength以适配左侧框架大小"""
+        if event:
+            width = event.width  # 无缓冲，精确在边界换行
+        else:
+            width = label.winfo_width()
         if width > 0:
             label.config(wraplength=width)
             
     def update_all_wraplengths(self, event=None):
         """更新所有需要自动换行的标签"""
-        self.update_wraplength(self.instructions_label)
-        self.update_wraplength(self.game_instructions_label)
+        self.update_wraplength(self.instructions_label, event)
+        self.update_wraplength(self.game_instructions_label, event)
 
     def open_server_config_page(self):
-        """打开服务器配置页面"""
-        url = "https://steamcommunity.com/linkfilter/?u=https%3A%2F%2Faccounts.klei.com%2Faccount%2Fgame%2Fservers%3Fgame%3DDontStarveTogether"
+        """打开配置文件下载页面"""
+        url = "https://accounts.klei.com/account/game/servers?game=DontStarveTogether"
         try:
-            subprocess.Popen(f"start {url}", shell=True)
+            import webbrowser
+            webbrowser.open(url)
             self.log_message(f"已打开浏览器访问: {url}", "INFO")
-        except FileNotFoundError:
-            messagebox.showerror("错误", "无法打开浏览器。请手动访问以下链接：\n" + url)
+        except Exception as e:
+            messagebox.showerror("错误", f"无法打开浏览器: {str(e)}\n请手动访问以下链接：\n{url}")
             self.log_message(f"无法打开浏览器，请手动访问: {url}", "ERROR")
+
+    def load_config(self):
+        """加载保存的配置"""
+        if os.path.exists(CONFIG_FILE_PATH):
+            try:
+                with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    # 添加默认值
+                    config.setdefault('steam_mod', True)
+                    # 调试：输出加载的配置
+                    self.log_message(f"加载配置: {config}", "INFO")
+                    return config
+            except (json.JSONDecodeError, FileNotFoundError):
+                self.log_message("配置文件损坏或不存在，使用默认配置", "WARNING")
+                return {'steam_mod': True}
+        self.log_message("配置文件不存在，使用默认配置", "INFO")
+        return {'steam_mod': True}
+    
+    def save_config(self):
+        """保存当前配置到文件"""
+        config = {
+            'config_file': self.config_file.get(),
+            'steamcmd_path': self.steamcmd_path.get(),
+            'steam_path': self.steam_path.get(),
+            'world_folder': self.world_folder.get(),
+            'steam_mod': self.steam_mod_var.get()
+        }
+        
+        try:
+            with open(CONFIG_FILE_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+                # 调试：输出保存的配置
+                self.log_message(f"保存配置: {config}", "INFO")
+        except Exception as e:
+            self.log_message(f"保存配置失败: {str(e)}", "ERROR")
 
 def main():
     """主函数"""
